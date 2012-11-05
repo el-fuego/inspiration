@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Построение графиков и диаграмм на JavaScript с использованием SVG</title>
+	<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+
+	<style>
+
+		rect {
+			fill: #555;
+			cursor: pointer;
+		}
+		rect:hover {
+			opacity: 0.9;
+		}
+		polyline {
+			fill:   none;
+			stroke: #555;
+			stroke-width: 3;
+		}
+		polyline.shape {
+			fill:   #f6f6f6;
+			stroke: #f6f6f6;
+		}
+		circle {
+			fill: #555;
+			stroke: transparent;
+			stroke-width: 6;
+			cursor: pointer;
+		}
+		circle:hover {
+			stroke: #555;
+		}
+	</style>
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.8.2/jquery.min.js"></script>
+	<script type="text/javascript" src="https://raw.github.com/bestiejs/lodash/v0.9.1/lodash.min.js"></script>
+
+</head>
+<body>
+
+	<script type="text/javascript">
+	
+	/* ********************************* */
+	//    Построение графиков и диаграмм 
+	//    JavaScript + SVG
+	//
+	//
+	//    Author:	Pulyaev Y.A.
+	//
+	//    Email:	watt87@mail.ru
+	//    VK:		el_fuego_zaz
+	/* ********************************* */
+
+
+	/**
+		@class Построение графиков и диаграмм 
+		@param {Object} settings
+		@param {Object} settings.el Место вставки
+	*/
+	Graph = function(settings){
+		
+		// применим настройки
+		this.$el = $(settings.el || settings.$el)
+		
+		this.options = $.extend({}, this.options, settings);
+		
+		// Вычислим размер рабочей области
+		this.options.workspaceWidth = this.options.width - this.options.paddingX*2
+		this.options.workspaceHeight = this.options.height - this.options.paddingY*2
+		
+		// Создадим чистую рабочуу область
+		this.clear();
+	}
+
+	/** */
+	Graph.prototype = {
+
+
+		/** Область svg */
+		SVG_NS: "http://www.w3.org/2000/svg",
+
+		/** Настройки по умолчанию */
+		options: {
+		
+			width: 450,
+			height: 140,
+			
+			paddingX: 10,
+			paddingY: 10,
+			
+			pointDiameter: 8,
+			diagramStep: 1
+		},
+		
+		
+		/** 
+			Создание нового SVG-тега
+			@param {String} name
+			@param {Object} [attributes]
+			@private
+		*/
+		_render: function(name, attributes){
+		
+			return $(document.createElementNS(this.SVG_NS, name)).attr(attributes || {}).appendTo(this.$workspace)
+		},
+		
+		
+		/** 
+			Создание рабочего простаранства
+			@private
+		*/
+		_renderWorkspace: function(){
+		
+			return $(document.createElementNS( this.SVG_NS, "g" )).attr({
+		
+				transform:	'translate('+ this.options.paddingX +', '+ (this.options.height - this.options.paddingY) +')'
+				
+				}).appendTo( $('<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" ></svg>').attr({
+				
+					width:	this.options.width,
+					height:	this.options.height
+				}).appendTo(this.$el) )
+		},
+		
+		
+		/** 
+			Очистка рабочего простаранства
+		*/
+		clear: function(){
+			
+			if(this.$workspace)
+				this.$workspace.remove()
+		
+			this.$workspace = this._renderWorkspace()
+		},
+		
+		
+		/** 
+			Вывод графика в виде линии
+			@param {Array} values
+			@param {Object} [options]
+		*/
+		renderLine: function(values, options){
+		
+			var self = this;
+			options || (options = {})
+			var ret = {};
+		
+			// Параетры вывода
+			var step = options.step || this.options.workspaceWidth / (values.length-1);
+			
+			var maxValue = options.maxValue || _.max(values); 
+			
+			var pointRadius = (options.pointDiameter || self.options.pointDiameter) / 2;
+		
+			// Получим все точки кривой
+			var svgPointsArray = _.map(values, function(val, i){
+			
+				if(_.isObject(val)){
+					var val = val.value
+				}
+			
+				return (step * i) + ',' + (-1 * val * self.options.workspaceHeight / maxValue)
+			})
+			
+			// Добавим по одной вначале и вконце для фона
+			svgPointsArray.unshift(_.first(svgPointsArray).replace(/,.+/,'')+',0')
+			svgPointsArray.push(_.last(svgPointsArray).replace(/,.+/,'')+',0')
+			
+			// Выведем фон
+			ret.shape = this._render('polyline', $.extend({}, 
+					options || {},
+					{
+						points: svgPointsArray.join(' '),
+						'class': 'shape ' + (options.class || '')
+					}
+				)
+			)
+			
+			// Выведем кривую
+			ret.line = this._render('polyline', $.extend({}, 
+					options || {},
+					{
+						points: svgPointsArray.slice(1, svgPointsArray.length-1).join(' ')
+					}
+				)
+			)
+			
+			// Выведем точки кривой
+			ret.points = _.map(values, function(val, i){
+			
+				var circleOptions = {}
+			
+				if(_.isObject(val)){
+					circleOptions = val.options;
+					var val = val.value
+				}
+				
+				var height = val * self.options.workspaceHeight / maxValue
+				
+				// Выведем одну точку
+				return self._render('circle', $.extend({}, 
+					circleOptions,
+					{
+						cx: step * i,
+						cy: -1 * height,
+						r: pointRadius
+					}
+				))
+				
+			})
+			
+			return ret;
+		},
+		
+		
+		/** 
+			Вывод графика в виде диаграммы
+			@param {Array} values
+			@param {Object} [options]
+		*/
+		renderDiagram: function(values, options){
+		
+			var self = this;
+			options || (options = {})
+		
+			// Параетры вывода
+			var step = options.step || this.options.diagramStep;
+			
+			var rectWidth = options.rectWidth || ( (this.options.workspaceWidth / values.length) - step);
+			
+			var maxValue = options.maxValue || _.max(values); 
+		
+		
+			// Выведем каждый элемент диаграммы
+			return _.map(values, function(val, i){
+			
+				var rectOptions = {}
+			
+				if(_.isObject(val)){
+					rectOptions = val.options;
+					val = val.value
+				}
+				
+				var height = val * self.options.workspaceHeight / maxValue
+				
+				// Выведем элемент диаграммы
+				return self._render('rect', $.extend({}, 
+					rectOptions,
+					{
+						x: (step + rectWidth) * i,
+						y: -1 * height,
+						width: rectWidth,
+						height: height
+					}
+				))
+				
+			})
+		}
+	}
+
+
+	$(function(){
+		// Строим график
+		new Graph ({
+			el: 'body'
+		}).renderLine([{value: 1, options: {'class': 'first'}}, 5, 6, 3, 5, 9, 7, 8, 2]);
+
+
+
+		// Строим диаграмму
+		new Graph ({
+			el: 'body'
+		}).renderDiagram([1, 5, 6, 3, {value: 5, options: {'id': 'wow'}}, 9, 7, 8, {value: 2, options: {'class': 'last'}}]);
+	})
+	</script>
+</body>
+</html>

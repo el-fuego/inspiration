@@ -1,0 +1,857 @@
+<html>
+<head>
+<meta http-equiv="Content-type" content="text/html;charset=UTF-8" />
+<title>Определение основных цветов на изображении. JavaScript + Canvas</title>
+<style>
+body {
+	background-color: #fafafa;
+}
+table td {
+	text-align: left;
+	vertical-align: top;
+	font-size: 12px;
+	font-family: Arial;
+	color: #333;
+}
+table td input {
+	width: 100px;
+}
+#canvasContainer {
+	width: 516px;
+}
+canvas,
+.colorsContainer {
+	margin: 16px 8px 8px 0;
+	border: 1px #ddd dashed;
+}
+.colorsContainer {
+	float: left;
+}
+table td input[id="imageUrl"] {
+	width: 546px;
+}
+.color {
+	width: 100px;
+	height: 24px;
+	line-height: 24px;
+	vertical-align: middle;
+}
+.color div {
+	float: left;
+	width: 24px;
+	height: 24px;
+	border-right: 1px dashed #fafafa;
+}
+.color span {
+	margin-left: 10px;
+}
+#primaryColorsContainer .color {
+	width: 170px;
+}
+#leveledColorsContainer .color {
+	width: 250px;
+}
+#etalonColorsContainer .color {
+	width: 350px;
+}
+.colorsContainer:before {
+	padding: 5px;
+}
+#colorsContainer:before {
+	content: 'По группам:'
+}
+#primaryColorsContainer:before {
+	content: 'Максимальный из похожих:'
+}
+#etalonColorsContainer:before {
+	content: 'Из массива заданных:'
+}
+#leveledColorsContainer:before {
+	content: 'Из HVS интервалов:'
+}
+</style>
+</head>
+<body>
+
+<table border="0">
+	<tr><td>Путь к картинке:</td>
+	<td>
+		<input id="imageUrl" type="text" value="9759ae8fa4543153342cd22c8d68b68c.png" />
+	</td></tr>
+	<tr><td>Различие цветов ( 20..150 ):</td>
+	<td>
+		<input id="colorStep" type="text" value="32" />
+	</td></tr>
+	<tr><td>Кол-во выводимых цветов:</td>
+	<td>
+		<input id="maxColorGrousCount" type="text" value="7" />
+	</td></tr>
+	<tr><td>Показывать с значением  (maxCountAtGroup / count) более, %:</td>
+	<td>
+		<input id="minColorsCountAtGroupPersent" type="text" value="2" />
+	</td></tr>
+	<tr><td>Основными считать с разницей между компонентами более (10..255):</td>
+	<td>
+		<input id="maxPimaryColorDifference" type="text" value="40" />
+	</td></tr>
+	<tr><td id="canvasContainer"></td><td>
+		<div class="colorsContainer" id="colorsContainer"></div>
+		<div class="colorsContainer" id="primaryColorsContainer"></div>
+		<div class="colorsContainer" id="leveledColorsContainer"></div>
+		<div class="colorsContainer" id="etalonColorsContainer"></div>
+	</td></tr>
+</table>
+
+<script>
+
+
+/* ********************************* */
+//      Getting primary colors
+//      [algorithm preview]
+//
+//
+//      Author:	Pulyaev Y.A.
+//
+//      Email:	watt87@mail.ru
+//      VK:		el_fuego_zaz
+/* ********************************* */
+
+
+
+
+// Colors calculator
+var ColorsCalculator = function (settings){
+
+	// Add settings and replace methods
+	for (var i in settings)
+		if (typeof settings[i] !== 'undefined'){
+			if (typeof this.settings[i] !== 'undefined' )
+				this.settings[i] = settings[i]
+			else
+				this[i] = settings[i]
+		}
+	
+	// Automatic calculation
+	if (settings.url)
+		this.calculate (settings.url, settings.onsuccess)
+}
+
+
+
+ColorsCalculator.prototype = {
+
+	settings: {
+		colorStep: 50,
+		
+		maxColorGrousCount: 20,
+		minColorsCountAtGroupPersent: 3,
+		
+		maxPimaryColorDifference: 50,
+		
+		blackLevelPersent: 0.5,
+		grayLevelPersent: 10,
+		
+		etalonColors: [],
+		levels: {
+			hue: [],
+			saturation: [],
+			value: [],
+			black: '',
+			white: '',
+			gray: ''
+		}
+	},
+
+
+
+	_error: function (msg){
+		
+		if (typeof console === 'object' && typeof console.error === 'function')
+			console.error (msg)
+
+		return {error: msg}
+	},
+
+
+
+	_isInArray: function (val, array){
+		
+		for (var i = 0, n = array.length; i < n; i++)
+			if (val === array[i])
+				return true;
+				
+		return false;
+	},
+
+
+
+	// Load image, return all pixels
+	loadImage: function (url, onsuccess){
+
+		// Create loader
+		var imageVar = new Image ()
+		imageVar.src = url
+
+		// Create canvas
+		var canvas = document.createElement ('canvas');
+		var context = canvas.getContext ("2d");
+
+		// Save context
+		var $$ = this;
+		
+		// Wait for image
+		imageVar.onload = function () {
+		
+		
+			// Get image source 
+			canvas.width = imageVar.width;
+			canvas.height = imageVar.height;
+			context.drawImage (imageVar, 0, 0, imageVar.width, imageVar.height)
+			
+			try {
+				var image = context.getImageData (0, 0, canvas.width, canvas.height)
+			}
+			catch (e){
+				if (typeof onsuccess === 'function')
+					onsuccess ($$.error ('Can`t read image data'))
+				return;
+			}
+		
+			if (typeof onsuccess === 'function')
+				onsuccess ({
+					pixels:		image.data,
+					canvasEl:	canvas,
+					width:		imageVar.width,
+					height:		imageVar.height
+				})
+		}
+	},
+
+
+
+	// rgbxy
+	_getColorGroupKey: function (data, pixelStart){
+	
+		// pixelStart = r, +1 = g, +2 = b, +3 = alpha
+		return 'r' + Math.floor (data.pixels[pixelStart]/this.colorStep) + 
+			'g' + Math.floor (data.pixels[pixelStart+1]/this.colorStep) + 
+			'b' + Math.floor (data.pixels[pixelStart+2]/this.colorStep)/* +
+			'x' + ( (pixelStart/4) % data.width) +
+			'y' + Math.floor ( (pixelStart/4) / data.width)*/
+	},
+
+
+
+	// Puts all pixels to groups
+	getColorGroups: function (data){
+		
+		var colorGroups = {};
+		for (var i = 0, n = data.pixels.length; i < n; i += 4) {
+		
+			// i = red i+1=green i+2=blue i+3=alpha
+			// Add color if opacity != 0
+			if (data.pixels[i+3] != 0){
+				
+				// Color group key
+				var key = this._getColorGroupKey (data, i);
+			
+				// Add color to group
+				if (!colorGroups[key])
+					colorGroups[key] = [];
+				colorGroups[key].push ([pixels[i], pixels[i+1], pixels[i+2]]);
+			}
+		}
+		
+		return colorGroups;
+	},
+
+
+
+	// Sort items by child counts
+	sortByLength: function (data){
+		
+		var res = [];
+		for (var i in data) {
+			
+			// Add the first item as is
+			if (!res.length)
+				res.push (data[i]);
+			else {
+			
+				// Add item between items with nearest lengths
+				for (var j = 0, m = res.length; j < m; j++){
+				
+					if (data[i].length > res[j].length){
+						res.splice (j, 0, data[i]);
+						break;
+						
+					// Add to end of list if length is minimal
+					} else if (j == m - 1){
+						res.push (data[i]);
+						break;
+					}
+				}
+			}
+		}
+	},
+
+
+
+	// Getting average color
+	_getAvrColor: function (colorsArr){
+	
+		var colorsSumm = [0,0,0];
+		
+		// Calculate the summ for Red, Green, Blue components
+		for (var i = 0, n = colorsArr.length; i < n; i++){
+			colorsSumm[0] += colorsArr[i][0];
+			colorsSumm[1] += colorsArr[i][1];
+			colorsSumm[2] += colorsArr[i][2];
+		}
+		
+		// Return color = summRed / colorsCount
+		return [
+			Math.floor (colorsSumm[0]/colorsArr.length), 
+			Math.floor (colorsSumm[1]/colorsArr.length), 
+			Math.floor (colorsSumm[2]/colorsArr.length)
+		];
+	},
+
+
+
+	_invertColor: function (color){
+		return [
+			255 - color[0],
+			255 - color[1],
+			255 - color[2]
+		]
+	},
+
+
+
+	_colorToString: function (color){
+		return 'rgb ('+ 
+			color[0]+', '+
+			color[1]+', '+
+			color[2]+')'
+	},
+
+
+
+	_maximizeColorSolution: function (color){
+	
+		// get max level from (r, g, b)
+		var maxComponentVal = Math.max (color[0], color[1], color[2])
+		
+		// max	~ 255
+		// x	~ ?
+		var coef = 255 / maxComponentVal
+		
+		return [
+			Math.floor (color[0]*coef), 
+			Math.floor (color[1]*coef), 
+			Math.floor (color[2]*coef)
+		]
+	},
+
+
+
+	// Is color has similar components
+	_isSimilarColors: function (color, similarColor, difference){
+	
+		// Similarity by Red, Green, Blue
+		var r = Math.abs ( color[0] - similarColor[0] );
+		var g = Math.abs ( color[1] - similarColor[1] );
+		var b = Math.abs ( color[2] - similarColor[2] );
+		
+		// Is similar colors
+		if ( r <= difference && g <= difference && b <= difference )
+			return true;
+	
+		return false;
+	},
+
+
+
+	// Is color witch similar components included
+	_isSimilarColorInArray: function (color, similarColorsArray, difference){
+	
+		if (typeof difference === 'undefined')
+			var difference = 0
+	
+		for (var i = 0, n = similarColorsArray.length; i < n; i++)
+			if ( this._isSimilarColors (color, similarColorsArray[i], difference) )
+				return similarColorsArray[i]
+		
+	
+		return false
+	},
+
+
+
+	_getMaxSimilarColor: function (color, similarColorsArray){
+		
+		var similarColor = false;
+		
+		for (var i = 10; i == 10 || similarColor == false; i += 5 )
+			similarColor = this._isSimilarColorInArray (color, similarColorsArray, i);
+			
+		return similarColor;
+	},
+
+
+
+	_roundColor: function (color){
+		
+		return [
+			Math.round (color[0]),
+			Math.round (color[1]),
+			Math.round (color[2])
+			]
+	},
+
+
+
+	// Return [0..1, 0..1, 0..1]
+	_getHsvCoef: function (color){
+	
+		var result = {};
+	
+		r = color[0] / 255;
+		g = color[1] / 255;
+		b = color[2] / 255;
+ 
+		var minVal = Math.min (r, g, b);
+		var maxVal = Math.max (r, g, b);
+		var delta = maxVal - minVal;
+		
+		result.v = maxVal;
+
+		if (delta == 0) {
+			result.h = 0;
+			result.s = 0;
+		} else {
+			result.s = delta / maxVal;
+			var del_R = (((maxVal - r) / 6) + (delta / 2)) / delta;
+			var del_G = (((maxVal - g) / 6) + (delta / 2)) / delta;
+			var del_B = (((maxVal - b) / 6) + (delta / 2)) / delta;
+ 
+			if (r == maxVal) { result.h = del_B - del_G; }
+			else if (g == maxVal) { result.h = (1 / 3) + del_R - del_B; }
+			else if (b == maxVal) { result.h = (2 / 3) + del_G - del_R; }
+ 
+			if (result.h < 0) { result.h += 1; }
+			if (result.h > 1) { result.h -= 1; }
+		}
+		
+		return [
+			Math.round (result.h * 1000 ) / 1000,
+			Math.round (result.s * 1000 ) / 1000,
+			Math.round (result.v * 1000 ) / 1000
+		]
+		
+	},
+
+
+
+	// Calculate color component level
+	_getLeveledComponent: function (val, levelsCount, corrector){
+	
+		if (typeof corrector === 'undefined') 
+			var corrector = 0;
+			
+		val = (val * (levelsCount-1)) + corrector;
+		if (val < 0) return (levelsCount - 1) + val;
+		if (val > (levelsCount - 1)) return val - (levelsCount - 1);
+		
+		return val;
+	},
+
+
+
+	_getLeveledHvs: function (hvsCoefColor){
+		return [
+			Math.round (this._getLeveledComponent (hvsCoefColor[0], this.settings.levels.hue.length, 0.5) * 1000 ) / 1000,
+			Math.round (this._getLeveledComponent (hvsCoefColor[1], this.settings.levels.saturation.length) * 1000 ) / 1000,
+			Math.round (this._getLeveledComponent (hvsCoefColor[2], this.settings.levels.value.length) * 1000 ) / 1000
+		]
+	},
+
+
+
+	_getLevel: function (leveledHvsColor){
+		
+		// Test black
+		if (leveledHvsColor[2] <= (this.settings.levels.value.length - 1) * this.settings.blackLevelPersent / 100)
+			return [
+				this.settings.levels.black, 
+				'', 
+				''
+			];
+			
+		// Test white
+		if (leveledHvsColor[2] >= (this.settings.levels.value.length - 1) * (1 - this.settings.blackLevelPersent / 100) )
+			return [
+				this.settings.levels.white, 
+				'', 
+				''
+			];
+			
+		// Test gray
+		if (leveledHvsColor[1] <= (this.settings.levels.saturation.length - 1) * this.settings.grayLevelPersent / 100)
+			return [
+				this.settings.levels.gray, 
+				'',
+				this.settings.levels.value [Math.round (leveledHvsColor[2])]
+			];
+		
+		// Colored
+		return [
+			this.settings.levels.hue[Math.round (leveledHvsColor[0])], 
+			this.settings.levels.saturation[Math.round (leveledHvsColor[1])],
+			this.settings.levels.value[Math.round (leveledHvsColor[2])]
+		];
+	},
+
+
+
+	_getEtalon: function (color){
+	
+		for (var j = 0; j < 1; j += 0.01 )
+			for (var i in etalonColors)
+				if ( this._isSimilarColors (color, etalonColors[i].color, j) )
+					return etalonColors[i];
+			
+	
+		return false
+	},
+
+
+
+	// ----------------------------------
+	// Return different colors at groups
+	getDifferentColorsFromGroups: function (colorGroups){
+	
+		var ret = [];
+	
+		// Calculate the min colors count to show
+		var maxColorsColunt = colorGroups[0].length;
+		var minCountToDisplay = maxColorsColunt * this.settings.minColorsCountAtGroupPersent / 100;
+		
+		for (var j = 0, m = colorGroups.length; 
+			j < m && j < this.settings.maxColorGrousCount && colorGroups[j].length > minCountToDisplay; 
+			j++){
+			
+			
+			// Average color
+			ret.push (this._getAvrColor (colorGroups[j]) )
+		
+		}
+		
+		return ret
+	},
+
+
+
+	// ----------------------------------
+	// Find different colors. Return first of each similar
+	getPrimaryColors: function (colors){
+		var ret = [];
+		for (var i = 0, n = colors.length; i < n; i++){
+			
+			// Exclude similar colors
+			if (!this._isSimilarColorInArray (colors[i], ret, this.settings.maxPimaryColorDifference)){
+			
+				ret.push (colors[i]);
+			}
+		}
+		
+		return ret
+	},
+
+
+
+	// ----------------------------------
+	// Find etalon colors
+	getEtalons: function (colors){
+		var ret = [];
+		for (var i = 0, n = colors.length; i < n; i++){
+			
+			// Find etalon
+			var etalonColorObj = this._getEtalon (colors[i]);
+			
+			if (!this._isInArray (etalonColorObj, ret)){
+		
+				ret.push (etalonColorObj);
+		
+			}
+		}
+	},
+
+
+
+	// ----------------------------------
+	// Show leveled colors
+	getLevels: function (colors){
+		var ret = [];
+		for (var i = 0, n = colors.length; i < n; i++){
+			
+			// Find level
+			var levelObj = this._getLevel (this._getLeveledHvs (this._getHsvCoef (colors[i])));
+			
+			if (!this._isInArray (levelObj, ret)){
+		
+				ret.push (levelObj);
+		
+			}
+		}
+	},
+
+	
+	
+	calculate: function (url, onsuccess){
+	
+		this.loadImage (url, function (imageData){
+			
+			var groups = this.sortByLength (this.getColorGroups (imageData));
+			
+			/* 
+			onsuccess ({
+				averageColors: 
+				primaryColors: 
+				etalons: 
+				levels: 
+			})*/
+		})
+	
+	}
+}
+
+
+
+
+
+
+
+
+var etalonColors = [
+	{ en: "aliceblue",	color: [0.579, 0.061, 1],	ru: ""},
+	{ en: "antiquewhite",	color: [0.095, 0.141, 0.99],	ru: "древний (античный) белый"},
+	{ en: "aqua",	color: [0.501, 1, 1],	ru: "морской волны"},
+	{ en: "aquamarine",	color: [0.446, 0.505, 1],	ru: "аквамариновый (зеленовато-голубой)"},
+	{ en: "azure",	color: [0.501, 0.061, 1],	ru: "лазурный"},
+	{ en: "beige",	color: [0.167, 0.101, 0.97],	ru: "беж"},
+	{ en: "bisque",	color: [0.092, 0.232, 1],	ru: "бисквитный (светло-коричневый)"},
+	{ en: "black",	color: [0, 0, 0],	ru: "черный"},
+	{ en: "blanchedalmond",	color: [0.1, 0.202, 1],	ru: "миндальный (чищеного миндаля)"},
+	{ en: "blue",	color: [0.669, 1, 1],	ru: "голубой (синий)"},
+	{ en: "blueviolet",	color: [0.755, 0.818, 0.899],	ru: "сине-фиолетовый"},
+	{ en: "brown",	color: [0, 0.758, 0.657],	ru: "коричневый"},
+	{ en: "burlywood",	color: [0.095, 0.394, 0.879],	ru: "плотной древесины"},
+	{ en: "cadetblue",	color: [0.507, 0.414, 0.636],	ru: ""},
+	{ en: "chartreuse",	color: [0.251, 1, 1],	ru: "шартрез (бледно-зеленый)"},
+	{ en: "chocolate",	color: [0.07, 0.869, 0.828],	ru: "шоколадный"},
+	{ en: "coral",	color: [0.045, 0.697, 1],	ru: "коралловый"},
+	{ en: "cornflowerblue",	color: [0.61, 0.586, 0.939],	ru: "васильковый"},
+	{ en: "cornsilk",	color: [0.134, 0.141, 1],	ru: "молодой кукурузы"},
+	{ en: "crimson",	color: [0.969, 0.919, 0.869],	ru: "малиновый, темно-красный, кармазинный"},
+	{ en: "cyan",	color: [0.501, 1, 1],	ru: "циановый"},
+	{ en: "darkblue",	color: [0.669, 1, 0.556],	ru: "темно-синий"},
+	{ en: "darkcyan",	color: [0.501, 1, 0.556],	ru: "темно-циановый"},
+	{ en: "darkgoldenrod",	color: [0.12, 0.949, 0.727],	ru: "темный золотисто-красный"},
+	{ en: "darkgray",	color: [0, 0, 0.667],	ru: "темно-серый"},
+	{ en: "darkgreen",	color: [0.334, 1, 0.394],	ru: "темно-зеленый"},
+	{ en: "darkkhaki",	color: [0.156, 0.434, 0.747],	ru: "темный хаки"},
+	{ en: "darkmagenta",	color: [0.836, 1, 0.556],	ru: "темный фуксин"},
+	{ en: "darkolivegreen",	color: [0.228, 0.566, 0.424],	ru: "темный оливково-зеленый"},
+	{ en: "darkorange",	color: [0.092, 1, 1],	ru: "темно-оранжевый"},
+	{ en: "darkorchid",	color: [0.78, 0.758, 0.808],	ru: "темно-лиловый"},
+	{ en: "darkred",	color: [0, 1, 0.556],	ru: "темно-красный"},
+	{ en: "darksalmon",	color: [0.042, 0.485, 0.919],	ru: "темно-лососевый"},
+	{ en: "darkseagreen",	color: [0.334, 0.242, 0.747],	ru: "темный морской волны"},
+	{ en: "darkslateblue",	color: [0.691, 0.566, 0.556],	ru: "темный аспидно-синий"},
+	{ en: "darkslategray",	color: [0.501, 0.414, 0.313],	ru: "темный аспидно-серый (темно-синевато-серый)"},
+	{ en: "darkturquoise",	color: [0.504, 1, 0.828],	ru: "темно-бирюзовый"},
+	{ en: "darkviolet",	color: [0.786, 1, 0.838],	ru: "темно-фиолетовый"},
+	{ en: "deeppink",	color: [0.914, 0.929, 1],	ru: "насыщенный розовый"},
+	{ en: "deepskyblue",	color: [0.543, 1, 1],	ru: "насыщенный небесно-голубой"},
+	{ en: "dimgray",	color: [0, 0, 0.414],	ru: "тускло-серый"},
+	{ en: "dodgerblue",	color: [0.585, 0.889, 1],	ru: ""},
+	{ en: "firebrick",	color: [0, 0.818, 0.707],	ru: "кирпичный"},
+	{ en: "floralwhite",	color: [0.111, 0.061, 1],	ru: "цветочно-белый"},
+	{ en: "forestgreen",	color: [0.334, 0.768, 0.556],	ru: "лесной зелени"},
+	{ en: "fuchsia",	color: [0.836, 1, 1],	ru: "фуксии"},
+	{ en: "gainsboro",	color: [0, 0, 0.869],	ru: "Гейнсборо"},
+	{ en: "ghostwhite",	color: [0.669, 0.03, 1],	ru: "призрачно-белый"},
+	{ en: "gold",	color: [0.142, 1, 1],	ru: "золотистый"},
+	{ en: "goldenrod",	color: [0.12, 0.859, 0.859],	ru: "золотисто-красный"},
+	{ en: "gray",	color: [0, 0, 0.505],	ru: "серый"},
+	{ en: "green",	color: [0.334, 1, 0.505],	ru: "зеленый"},
+	{ en: "greenyellow",	color: [0.234, 0.828, 1],	ru: "зелено-желтый"},
+	{ en: "honeydew",	color: [0.334, 0.061, 1],	ru: "медовой росы"},
+	{ en: "hotpink",	color: [0.919, 0.596, 1],	ru: "яркий розовый"},
+	{ en: "indianred",	color: [0, 0.556, 0.808],	ru: ""},
+	{ en: "indigo",	color: [0.766, 1, 0.515],	ru: "индиго"},
+	{ en: "ivory",	color: [0.167, 0.061, 1],	ru: "слоновой кости"},
+	{ en: "khaki",	color: [0.15, 0.424, 0.949],	ru: "хаки"},
+	{ en: "lavender",	color: [0.669, 0.081, 0.99],	ru: "лавандовый (бледно-лиловый)"},
+	{ en: "lavenderblush",	color: [0.947, 0.061, 1],	ru: "лавандового румянца"},
+	{ en: "lawngreen",	color: [0.251, 1, 1],	ru: "зеленой лужайки"},
+	{ en: "lemonchiffon",	color: [0.15, 0.202, 1],	ru: "лимонного шифона"},
+	{ en: "lightblue",	color: [0.543, 0.253, 0.909],	ru: "светло-голубой"},
+	{ en: "lightcoral",	color: [0, 0.475, 0.949],	ru: "светло-коралловый"},
+	{ en: "lightcyan",	color: [0.501, 1.222, 1],	ru: "светло-циановый"},
+	{ en: "lightgreen",	color: [0.334, 0.394, 0.939],	ru: "светло-зеленый"},
+	{ en: "lightgrey",	color: [0, 0, 0.838],	ru: "светло-серый"},
+	{ en: "lightpink",	color: [0.978, 0.293, 1],	ru: "светло-розовый"},
+	{ en: "lightsalmon",	color: [0.047, 0.525, 1],	ru: "светло-лососевый"},
+	{ en: "lightseagreen",	color: [0.493, 0.828, 0.707],	ru: "светлый морской волны"},
+	{ en: "lightskyblue",	color: [0.565, 0.465, 0.99],	ru: "светлый небесно-голубой"},
+	{ en: "lightslategray",	color: [0.585, 0.222, 0.606],	ru: "светлый аспидно-серый"},
+	{ en: "lightsteelblue",	color: [0.596, 0.212, 0.879],	ru: "светлый голубовато-стальной"},
+	{ en: "lightyellow",	color: [0.167, 0.121, 1],	ru: "светло-желтый"},
+	{ en: "lime",	color: [0.334, 1, 1],	ru: "лайма"},
+	{ en: "limegreen",	color: [0.334, 0.768, 0.808],	ru: "зеленого лайма"},
+	{ en: "linen",	color: [0.084, 0.081, 0.99],	ru: "льняной"},
+	{ en: "magenta",	color: [0.836, 1, 1],	ru: "фуксин, красная анилиновая краска"},
+	{ en: "maroon",	color: [0, 1, 0.505],	ru: "густой красно-коричневый"},
+	{ en: "mediumaquamarine",	color: [0.446, 0.505, 0.808],	ru: "умеренный аквамариновый"},
+	{ en: "mediumblue",	color: [0.669, 1, 0.808],	ru: "умеренный голубой (синий)"},
+	{ en: "mediumorchid",	color: [0.802, 0.606, 0.838],	ru: "умеренный лиловый"},
+	{ en: "mediumpurple",	color: [0.724, 0.495, 0.869],	ru: "умеренный пурпурный"},
+	{ en: "mediumseagreen",	color: [0.409, 0.667, 0.707],	ru: "умеренный морской волны"},
+	{ en: "mediumslateblue",	color: [0.694, 0.566, 0.939],	ru: "умеренный аспидно-синий"},
+	{ en: "mediumspringgreen",	color: [0.437, 1, 0.99],	ru: "умеренный весенней зелени"},
+	{ en: "mediumturquoise",	color: [0.496, 0.667, 0.828],	ru: "умеренный бирюзовый"},
+	{ en: "mediumvioletred",	color: [0.897, 0.899, 0.788],	ru: "умеренный лилово-красный"},
+	{ en: "midnightblue",	color: [0.669, 0.788, 0.444],	ru: "синей полночи"},
+	{ en: "mintcream",	color: [0.418, 0.04, 1],	ru: "мятного крема"},
+	{ en: "mistyrose",	color: [0.017, 1.222, 1],	ru: "туманно-розовый"},
+	{ en: "moccasin",	color: [0.106, 0.293, 1],	ru: ""},
+	{ en: "navajowhite",	color: [0.1, 0.323, 1],	ru: ""},
+	{ en: "navy",	color: [0.669, 1, 0.505],	ru: "флотский"},
+	{ en: "oldlace",	color: [0.109, 0.091, 1],	ru: "старого кружева"},
+	{ en: "olive",	color: [0.167, 1, 0.505],	ru: "оливковый"},
+	{ en: "olivedrab",	color: [0.223, 0.758, 0.566],	ru: "нежно-оливковый"},
+	{ en: "orange",	color: [0.109, 1, 1],	ru: "оранжевый"},
+	{ en: "orangered",	color: [0.045, 1, 1],	ru: "оранжево-красный"},
+	{ en: "orchid",	color: [0.841, 0.495, 0.859],	ru: "лиловый"},
+	{ en: "palegoldenrod",	color: [0.153, 0.293, 0.939],	ru: "бледный золотисто-красный"},
+	{ en: "palegreen",	color: [0.334, 0.394, 0.99],	ru: "бледно-зеленый"},
+	{ en: "paleturquoise",	color: [0.501, 0.263, 0.939],	ru: "бледно-бирюзовый"},
+	{ en: "palevioletred",	color: [0.947, 0.495, 0.869],	ru: "бледный лилово-красный"},
+	{ en: "papayawhip",	color: [0.103, 0.162, 1],	ru: "побега папайи"},
+	{ en: "peachpuff",	color: [0.078, 0.273, 1],	ru: "персиковый"},
+	{ en: "peru",	color: [0.084, 0.697, 0.808],	ru: ""},
+	{ en: "pink",	color: [0.975, 0.253, 1],	ru: "розовый"},
+	{ en: "plum",	color: [0.836, 0.283, 0.879],	ru: "сливовый (темно-фиолетовый с оттенками бордового)"},
+	{ en: "powderblue",	color: [0.521, 0.232, 0.909],	ru: "голубой пороши"},
+	{ en: "purple",	color: [0.836, 1, 0.505],	ru: "пурпурный"},
+	{ en: "red",	color: [0, 1, 1],	ru: "красный"},
+	{ en: "rosybrown",	color: [0, 0.242, 0.747],	ru: "розово-коричневый"},
+	{ en: "royalblue",	color: [0.627, 0.717, 0.889],	ru: "королевский голубой"},
+	{ en: "saddlebrown",	color: [0.07, 0.869, 0.556],	ru: "кожаного седла"},
+	{ en: "salmon",	color: [0.017, 0.545, 0.99],	ru: "лососевый"},
+	{ en: "sandybrown",	color: [0.078, 0.616, 0.97],	ru: "рыжеватый"},
+	{ en: "seagreen",	color: [0.407, 0.677, 0.556],	ru: "морской волны"},
+	{ en: "seashell",	color: [0.07, 0.071, 1],	ru: "морской раковины"},
+	{ en: "sienna",	color: [0.053, 0.727, 0.636],	ru: "сиена (охра)"},
+	{ en: "silver",	color: [0, 0, 0.758],	ru: "серебристый"},
+	{ en: "skyblue",	color: [0.549, 0.434, 0.929],	ru: "небесно-голубой"},
+	{ en: "slateblue",	color: [0.691, 0.566, 0.808],	ru: "аспидно-синий"},
+	{ en: "slategray",	color: [0.585, 0.222, 0.566],	ru: "аспидно-серый"},
+	{ en: "snow",	color: [0, 0.02, 1],	ru: "снежный"},
+	{ en: "springgreen",	color: [0.418, 1, 1],	ru: "весенней зелени"},
+	{ en: "steelblue",	color: [0.577, 0.616, 0.717],	ru: "голубовато-стальной"},
+	{ en: "tan",	color: [0.095, 0.333, 0.828],	ru: "дубильной коры (желтовато-коричневый)"},
+	{ en: "teal",	color: [0.501, 1, 0.505],	ru: ""},
+	{ en: "thistle",	color: [0.836, 0.121, 0.859],	ru: "чертополоха"},
+	{ en: "tomato",	color: [0.025, 0.727, 1],	ru: "томатный"},
+	{ en: "turquoise",	color: [0.485, 0.717, 0.889],	ru: "бирюзовый"},
+	{ en: "violet",	color: [0.836, 0.455, 0.939],	ru: "темно-лиловый, фиолетовый"},
+	{ en: "wheat",	color: [0.109, 0.273, 0.97],	ru: "пшеничный"},
+	{ en: "white",	color: [0, 0, 1],	ru: "белый"},
+	{ en: "whitesmoke",	color: [0, 0, 0.97],	ru: "дымчатый"},
+	{ en: "yellow",	color: [0.167, 1, 1],	ru: "желтый"},
+	{ en: "yellowgreen",	color: [0.223, 0.768, 0.808],	ru: "желто-зеленый"}
+];
+	
+var levels = {
+	hue: ['красный', 'оранжевый', 'желтый', 'салатовый', 'зеленый', 'бирюзовый', 'голубой', 'синий', 'сиреневый', 'фиолетовый', 'малиновый'],
+	saturation: ['бледный', 'бледный', '', 'насыщенный'],
+	value: ['темный', 'темный', '', 'светлый/яркий'],
+	black: 'черный',
+	white: 'белый',
+	gray: 'серый'
+}
+
+
+
+
+
+
+// Autostart
+var calc = new ColorsCalculator ({
+	// Settings
+	colorStep: document.getElementById ('colorStep').value,
+	maxColorGrousCount: document.getElementById ('maxColorGrousCount').value,
+	minColorsCountAtGroupPersent: document.getElementById ('minColorsCountAtGroupPersent').value,
+	maxPimaryColorDifference: document.getElementById ('maxPimaryColorDifference').value,
+	
+	etalonColors: etalonColors,
+	levels: levels
+});
+
+
+/*
+// Events
+inputs = document.getElementsByTagName ('INPUT');
+for (var i = 0, n = inputs.length; i < n; i++)
+	inputs[i].onchange = calculateColors;
+	
+
+
+
+	
+	// Clear old colors
+	var colorsContainer = document.getElementById ('colorsContainer');
+	colorsContainer.innerHTML = "";
+	var primaryColorsContainer = document.getElementById ('primaryColorsContainer');
+	primaryColorsContainer.innerHTML = "";
+	var etalonColorsContainer = document.getElementById ('etalonColorsContainer');
+	etalonColorsContainer.innerHTML = "";
+	var leveledColorsContainer = document.getElementById ('leveledColorsContainer');
+	leveledColorsContainer.innerHTML = "";
+	
+	
+document.getElementById ('imageUrl').value
+
+var showColor = function (container, color, smallColor, text){
+	
+		elMain = document.createElement ('DIV');
+		elMain.className = "color";
+		elMain.style.backgroundColor = colorToString (color);
+		
+		if (smallColor){
+			elFirst = document.createElement ('DIV');
+			elFirst.style.backgroundColor = colorToString (smallColor);
+			elFirst.innerHTML = '&nbsp;';
+			elMain.appendChild (elFirst);
+		}
+		
+		if (text){
+			elCount = document.createElement ('span');
+			elCount.style.color = colorToString (invertColor (color))
+			elCount.innerHTML = text;
+			elMain.appendChild (elCount);
+		}
+		
+		container.appendChild (elMain);
+	}
+*/
+</script>
+
+<a href = "http://vkontakte.ru/el_fuego_zaz" title = "Visit my social blog" style = "position:absolute; right:10px; bottom:10px; color:#ccc;">© Pulyaev Y.A.</a>
+
+</body>
+</html>
