@@ -1,0 +1,100 @@
+body {
+	background: #f5f5f5;
+}
+
+rect {
+	fill:   #555;
+	cursor: pointer;
+}
+
+rect:hover {
+	fill: #006CC2;
+}
+
+polyline {
+	fill:         none;
+	stroke:       #555;
+	stroke-width: 3;
+}
+
+polyline.shape {
+	fill:   #e5e5e5;
+	stroke: #e5e5e5;
+}
+
+circle {
+	fill:         #555;
+	stroke:       transparent;
+	stroke-width: 6;
+	cursor:       pointer;
+}
+
+circle:hover {
+	stroke: #555;
+}
+
+.sector {
+	fill:         #555;
+	stroke-width: 0.9;
+	stroke:       #fff;
+}
+
+.sector.n0 {
+	fill: #006CC2;
+}
+
+.sector.n1 {
+	fill: #FFA000;
+}
+
+.sector.n2 {
+	fill: #F53C1D;
+}
+
+.sector.n3 {
+	fill: #00A200;
+}
+
+.sector.n4 {
+	fill: #b100a3;
+}
+
+.sector.n5 {
+	fill: #00C19B;
+}
+
+.sector.n6 {
+	fill: #d30051;
+}
+
+.sector.n7 {
+	fill: #bdd000;
+}
+
+.sector.n8 {
+	fill: #00B3C1;
+}
+
+.sector.n9 {
+	fill: #5700C1;
+}
+
+.sector.n10 {
+	fill: #D68730;
+}
+
+.sector.n11 {
+	fill: #D5C831;
+}
+
+.sector.n12 {
+	fill: #BD484B;
+}
+
+.sector.n13 {
+	fill: #45A2C0;
+}
+
+.sector.n14 {
+	fill: #46BF62;
+}
