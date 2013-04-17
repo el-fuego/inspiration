@@ -3,10 +3,10 @@
 //    JavaScript + SVG
 //
 //
-//    Author:	Pulyaev Y.A.
+//    Author:   Pulyaev Y.A.
 //
-//    Email:	watt87@mail.ru
-//    VK:		el_fuego_zaz
+//    Email:    watt87@mail.ru
+//    VK:       el_fuego_zaz
 /* ********************************* */
 
 
@@ -19,14 +19,13 @@ window.Graph = function (options) {
 
     // применим настройки
     this.$el = $(options.el || options.$el);
-
-    this.options = _.extend({}, this.options, options);
+    this.options = $.extend({}, this.options, options);
 
     // Вычислим размер рабочей области
     this.options.workspaceWidth = this.options.width - this.options.paddingX * 2
     this.options.workspaceHeight = this.options.height - this.options.paddingY * 2
 
-    // Создадим чистую рабочуу область
+    // Создадим чистую рабочую область
     this.clear();
 };
 
@@ -90,14 +89,17 @@ window.Graph.prototype = {
      */
     _renderSector: function (centerX, centerY, radius, startDegree, endDegree, attributes) {
 
-        return this._render('path', $.extend({
-            d: 'M ' + centerX + ',' + centerY + ' ' +
-                'l ' + (radius * Math.cos(startDegree)) +
-                    ',' + (radius * Math.sin(startDegree)) + ' ' +
-                'A ' + radius + ',' + radius + ',0,0,1,' +
-                   (centerX + radius * Math.cos(endDegree)) + ',' +
-                   (centerY + radius * Math.sin(endDegree)) + ' z'
-        }, attributes || {}));
+        return this._render('path', $.extend(
+            {
+                d: 'M ' + centerX + ',' + centerY + ' ' +
+                    'l ' + (radius * Math.cos(startDegree)) +
+                        ',' + (radius * Math.sin(startDegree)) + ' ' +
+                    'A ' + radius + ',' + radius + ',0,0,1,' +
+                       (centerX + radius * Math.cos(endDegree)) + ',' +
+                       (centerY + radius * Math.sin(endDegree)) + ' z'
+            },
+            attributes || {}
+        ));
     },
 
 
@@ -107,9 +109,10 @@ window.Graph.prototype = {
      */
     _renderWorkspace: function () {
 
-        return $(document.createElementNS(this.SVG_NS, "g")).attr({
-            transform: 'translate(' + this.options.paddingX + ', ' + (this.options.height - this.options.paddingY) + ')'
-        })
+        return $(document.createElementNS(this.SVG_NS, "g"))
+            .attr({
+                transform: 'translate(' + this.options.paddingX + ', ' + (this.options.height - this.options.paddingY) + ')'
+            })
             .appendTo(
                 $('<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" ></svg>')
                     .attr({
@@ -152,13 +155,12 @@ window.Graph.prototype = {
 
         // Получим все точки кривой
         var svgPointsArray = _.map(values, function (val, i) {
-
             return (step * i) + ',' + (-1 * (val.value || val) * self.options.workspaceHeight / maxValue)
         });
 
         // Добавим по одной вначале и вконце для фона
-        svgPointsArray.unshift(_.first(svgPointsArray).replace(/,.+/, '') + ',0');
-        svgPointsArray.push(_.last(svgPointsArray).replace(/,.+/, '') + ',0');
+        svgPointsArray.unshift(_.first(svgPointsArray).replace(/,[0-9.]+/, '') + ',0');
+        svgPointsArray.push(_.last(svgPointsArray).replace(/,[0-9.]+/, '') + ',0');
 
         // Выведем фон
         ret.shape = this._render('polyline', $.extend({}, options || {}, {
@@ -174,10 +176,8 @@ window.Graph.prototype = {
         // Выведем точки кривой
         ret.points = _.map(values, function (val, i) {
 
-            var height = (val.value || val) * self.options.workspaceHeight / maxValue
-
-            // Выведем одну точку
-            return self._render('circle', _.extend({}, val.options || {}, {
+            var height = (val.value || val) * self.options.workspaceHeight / maxValue;
+            return self._render('circle', $.extend({}, val.options || {}, {
                 cx: step * i,
                 cy: -height,
                 r:  pointRadius
@@ -235,14 +235,14 @@ window.Graph.prototype = {
         // blur
         this._render("feGaussianBlur", {
             result: "offset-blur",
-            stdDeviation: size / 4
+            stdDeviation: size / 4 // размер размытия
         }, $filter);
 
-        // composite 1
+        // composite
         this._render('feComposite', {
             operator: 'arithmetic',
-            k1:       '3',
-            k2:       '0.6',
+            k1:       '3',   // уровень фильтра
+            k2:       '0.6', // уровень исходного изображения
             k3:       '0',
             k4:       '0',
             'in':     'SourceGraphic',
@@ -273,18 +273,19 @@ window.Graph.prototype = {
         var centerY = -radius;
         var endDegree = 0;
 
+        // Эффект
         this._renderGradient();
 
         // Выведем каждый элемент диаграммы
         return _.map(values, function (val, i) {
-            var elementOptions = _.extend({},
+            var elementOptions = $.extend(
+                {},
                 val.options || {},
                 {
                     'class': 'sector n' + i + (val.options && val.options['class'] ? ' ' + val.options['class'] : '')
                 }
             );
             var startDegree = endDegree;
-
             endDegree = startDegree + (val.value || val) * 2 * Math.PI / valuesTotal;
 
             // Выведем сектор

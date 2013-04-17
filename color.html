@@ -76,7 +76,7 @@ table td input[id="imageUrl"] {
 <table border="0">
 	<tr><td>Путь к картинке:</td>
 	<td>
-		<input id="imageUrl" type="text" value="9759ae8fa4543153342cd22c8d68b68c.png" />
+		<input id="imageUrl" type="text" value="test.jpg" />
 	</td></tr>
 	<tr><td>Различие цветов ( 20..150 ):</td>
 	<td>
@@ -258,7 +258,7 @@ ColorsCalculator.prototype = {
 				// Add color to group
 				if (!colorGroups[key])
 					colorGroups[key] = [];
-				colorGroups[key].push ([pixels[i], pixels[i+1], pixels[i+2]]);
+				colorGroups[key].push ([pixels[i], data.pixels[i+1], data.pixels[i+2]]);
 			}
 		}
 		
@@ -610,10 +610,11 @@ ColorsCalculator.prototype = {
 	
 	
 	calculate: function (url, onsuccess){
-	
+		var self = this;
+		
 		this.loadImage (url, function (imageData){
 			
-			var groups = this.sortByLength (this.getColorGroups (imageData));
+			var groups = self.sortByLength (self.getColorGroups (imageData));
 			
 			/* 
 			onsuccess ({
@@ -786,33 +787,9 @@ var levels = {
 }
 
 
+var calculateColors = function () {
 
 
-
-
-// Autostart
-var calc = new ColorsCalculator ({
-	// Settings
-	colorStep: document.getElementById ('colorStep').value,
-	maxColorGrousCount: document.getElementById ('maxColorGrousCount').value,
-	minColorsCountAtGroupPersent: document.getElementById ('minColorsCountAtGroupPersent').value,
-	maxPimaryColorDifference: document.getElementById ('maxPimaryColorDifference').value,
-	
-	etalonColors: etalonColors,
-	levels: levels
-});
-
-
-/*
-// Events
-inputs = document.getElementsByTagName ('INPUT');
-for (var i = 0, n = inputs.length; i < n; i++)
-	inputs[i].onchange = calculateColors;
-	
-
-
-
-	
 	// Clear old colors
 	var colorsContainer = document.getElementById ('colorsContainer');
 	colorsContainer.innerHTML = "";
@@ -822,9 +799,33 @@ for (var i = 0, n = inputs.length; i < n; i++)
 	etalonColorsContainer.innerHTML = "";
 	var leveledColorsContainer = document.getElementById ('leveledColorsContainer');
 	leveledColorsContainer.innerHTML = "";
+
+	var calc = new ColorsCalculator ({
+		// Settings
+		colorStep: document.getElementById ('colorStep').value,
+		maxColorGrousCount: document.getElementById ('maxColorGrousCount').value,
+		minColorsCountAtGroupPersent: document.getElementById ('minColorsCountAtGroupPersent').value,
+		maxPimaryColorDifference: document.getElementById ('maxPimaryColorDifference').value,
+		
+		etalonColors: etalonColors,
+		levels: levels,
+		
+		url: document.getElementById ('imageUrl').value
+	});
+}
+
+
+// Autostart
+calculateColors();
+
+
+
+// Events
+inputs = document.getElementsByTagName ('INPUT');
+for (var i = 0, n = inputs.length; i < n; i++) {
+	inputs[i].onchange = calculateColors;
+	}
 	
-	
-document.getElementById ('imageUrl').value
 
 var showColor = function (container, color, smallColor, text){
 	
@@ -848,7 +849,7 @@ var showColor = function (container, color, smallColor, text){
 		
 		container.appendChild (elMain);
 	}
-*/
+
 </script>
 
 <a href = "http://vkontakte.ru/el_fuego_zaz" title = "Visit my social blog" style = "position:absolute; right:10px; bottom:10px; color:#ccc;">© Pulyaev Y.A.</a>
